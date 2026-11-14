@@ -11,8 +11,13 @@ import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.network.parseAs
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
@@ -23,6 +28,7 @@ import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.days
 
 internal class ExtensionApi {
@@ -50,18 +56,66 @@ internal class ExtensionApi {
     private suspend fun getExtensions(extRepo: ExtensionRepo): List<Extension.Available> {
         val repoBaseUrl = extRepo.baseUrl
         return try {
-            val response = networkService.client
-                .newCall(GET("$repoBaseUrl/index.min.json"))
-                .awaitSuccess()
-
-            with(json) {
-                response
-                    .parseAs<List<ExtensionJsonObject>>()
-                    .toExtensions(repoBaseUrl)
+            // Repositories that moved to extension lib 1.6 advertise a version 2 index in their repo.json. Their
+            // legacy index.min.json only contains placeholders, so the new index has to be preferred when present.
+            val indexV2Url = getIndexV2Url(repoBaseUrl)
+            if (indexV2Url != null) {
+                getExtensionsFromIndexV2(repoBaseUrl, indexV2Url)
+            } else {
+                getExtensionsFromLegacyIndex(repoBaseUrl)
             }
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e) { "Failed to get extensions from $repoBaseUrl" }
             emptyList()
+        }
+    }
+
+    private suspend fun getIndexV2Url(repoBaseUrl: String): String? {
+        return try {
+            with(json) {
+                networkService.client
+                    .newCall(GET("$repoBaseUrl/repo.json"))
+                    .awaitSuccess()
+                    .parseAs<JsonObject>()
+            }["index_v2"]
+                .let { it as? JsonPrimitive }
+                ?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.DEBUG, e) { "No version 2 index available for $repoBaseUrl" }
+            null
+        }
+    }
+
+    @OptIn(ExperimentalSerializationApi::class)
+    private suspend fun getExtensionsFromIndexV2(repoBaseUrl: String, indexUrl: String): List<Extension.Available> {
+        val index = networkService.client
+            .newCall(GET(indexUrl))
+            .awaitSuccess()
+            .use { ExtensionIndexV2.decode(it.body.source(), json, ProtoBuf) }
+
+        val list = index.extensionList ?: index.extensionListUrl?.let { listUrl ->
+            networkService.client
+                .newCall(GET(listUrl))
+                .awaitSuccess()
+                .use { ExtensionIndexV2.decodeList(it.body.source(), json, ProtoBuf) }
+        }
+
+        return index.toAvailableExtensions(repoBaseUrl, list)
+            .filter { it.libVersion in ExtensionLoader.LIB_VERSION_MIN..ExtensionLoader.LIB_VERSION_MAX }
+    }
+
+    private suspend fun getExtensionsFromLegacyIndex(repoBaseUrl: String): List<Extension.Available> {
+        val response = networkService.client
+            .newCall(GET("$repoBaseUrl/index.min.json"))
+            .awaitSuccess()
+
+        return with(json) {
+            response
+                .parseAs<List<ExtensionJsonObject>>()
+                .toExtensions(repoBaseUrl)
         }
     }
 
@@ -132,7 +186,7 @@ internal class ExtensionApi {
     }
 
     fun getApkUrl(extension: Extension.Available): String {
-        return "${extension.repoUrl}/apk/${extension.apkName}"
+        return extension.apkUrl ?: "${extension.repoUrl}/apk/${extension.apkName}"
     }
 
     private fun ExtensionJsonObject.extractLibVersion(): Double {

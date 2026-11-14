@@ -43,6 +43,11 @@ sealed class Extension {
         val apkName: String,
         val iconUrl: String,
         val repoUrl: String,
+        /**
+         * Direct download url of the apk. Set for extensions coming from a version 2 store index,
+         * legacy indexes only provide [apkName] relative to [repoUrl].
+         */
+        val apkUrl: String? = null,
     ) : Extension() {
 
         data class Source(

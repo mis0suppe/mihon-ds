@@ -12,7 +12,9 @@ class CreateExtensionRepo(
     private val repository: ExtensionRepoRepository,
     private val service: ExtensionRepoService,
 ) {
-    private val repoRegex = """^https://.*/index\.min\.json$""".toRegex()
+    // Accept the legacy index url as well as the entry points of version 2 stores (tachiyomix / lib 1.6),
+    // which are usually shared as `index.pb` or `repo.json`.
+    private val repoRegex = """^https://.*/(index\.min\.json|repo\.json|index\.pb|index\.json)$""".toRegex()
 
     suspend fun await(indexUrl: String): Result {
         val formattedIndexUrl = indexUrl.toHttpUrlOrNull()
@@ -20,7 +22,7 @@ class CreateExtensionRepo(
             ?.takeIf { it.matches(repoRegex) }
             ?: return Result.InvalidUrl
 
-        val baseUrl = formattedIndexUrl.removeSuffix("/index.min.json")
+        val baseUrl = formattedIndexUrl.substringBeforeLast('/')
         return service.fetchRepoDetails(baseUrl)?.let { insert(it) } ?: Result.InvalidUrl
     }
 
