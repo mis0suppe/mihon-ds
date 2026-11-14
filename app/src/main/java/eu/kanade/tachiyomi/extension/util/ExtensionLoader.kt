@@ -50,8 +50,15 @@ internal object ExtensionLoader {
     private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
     private const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
     private const val METADATA_NSFW = "tachiyomi.extension.nsfw"
+
+    // Manifest keys introduced with tachiyomix (extension lib 1.6)
+    private const val METADATA_NAME = "tachiyomix.name"
+    private const val METADATA_EXTENSION_LIB = "tachiyomix.extensionLib"
+    private const val METADATA_CONTENT_WARNING = "tachiyomix.contentWarning"
+    private const val CONTENT_WARNING_NSFW = 2
+
     const val LIB_VERSION_MIN = 1.4
-    const val LIB_VERSION_MAX = 1.5
+    const val LIB_VERSION_MAX = 1.6
 
     @Suppress("DEPRECATION")
     private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or
@@ -229,7 +236,9 @@ internal object ExtensionLoader {
         val appInfo = pkgInfo.applicationInfo!!
         val pkgName = pkgInfo.packageName
 
-        val extName = pkgManager.getApplicationLabel(appInfo).toString().substringAfter("Tachiyomi: ")
+        val metaData = appInfo.metaData
+        val extName = metaData?.getString(METADATA_NAME)
+            ?: pkgManager.getApplicationLabel(appInfo).toString().substringAfter("Tachiyomi: ")
         val versionName = pkgInfo.versionName
         val versionCode = PackageInfoCompat.getLongVersionCode(pkgInfo)
 
@@ -238,8 +247,14 @@ internal object ExtensionLoader {
             return LoadResult.Error
         }
 
-        // Validate lib version
-        val libVersion = versionName.substringBeforeLast('.').toDoubleOrNull()
+        // Validate lib version. tachiyomix (1.6+) extensions declare it in the manifest, legacy ones encode it
+        // in the version name (1.4.x).
+        val declaredLibVersion = metaData?.let {
+            it.getFloat(METADATA_EXTENSION_LIB, 0f).takeIf { lib -> lib > 0f }?.toString()
+                ?: it.getString(METADATA_EXTENSION_LIB)
+        }
+        val libVersion = declaredLibVersion?.toDoubleOrNull()
+            ?: versionName.substringBeforeLast('.').toDoubleOrNull()
         if (libVersion == null || libVersion < LIB_VERSION_MIN || libVersion > LIB_VERSION_MAX) {
             logcat(LogPriority.WARN) {
                 "Lib version is $libVersion, while only versions " +
@@ -265,7 +280,8 @@ internal object ExtensionLoader {
             return LoadResult.Untrusted(extension)
         }
 
-        val isNsfw = appInfo.metaData.getInt(METADATA_NSFW) == 1
+        val isNsfw = metaData?.getInt(METADATA_NSFW) == 1 ||
+            metaData?.getInt(METADATA_CONTENT_WARNING) == CONTENT_WARNING_NSFW
         if (!loadNsfwSource && isNsfw) {
             logcat(LogPriority.WARN) { "NSFW extension $pkgName not allowed" }
             return LoadResult.Error
@@ -278,7 +294,13 @@ internal object ExtensionLoader {
             return LoadResult.Error
         }
 
-        val sources = appInfo.metaData.getString(METADATA_SOURCE_CLASS)!!
+        val sourceClasses = metaData?.getString(METADATA_SOURCE_CLASS)
+        if (sourceClasses.isNullOrBlank()) {
+            logcat(LogPriority.WARN) { "Missing source class for extension $extName" }
+            return LoadResult.Error
+        }
+
+        val sources = sourceClasses
             .split(";")
             .map {
                 val sourceClass = it.trim()
@@ -319,7 +341,7 @@ internal object ExtensionLoader {
             lang = lang,
             isNsfw = isNsfw,
             sources = sources,
-            pkgFactory = appInfo.metaData.getString(METADATA_SOURCE_FACTORY),
+            pkgFactory = metaData.getString(METADATA_SOURCE_FACTORY),
             icon = appInfo.loadIcon(pkgManager),
             isShared = extensionInfo.isShared,
         )

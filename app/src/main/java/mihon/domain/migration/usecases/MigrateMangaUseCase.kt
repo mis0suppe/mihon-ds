@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.source.getChapterList
 import kotlinx.coroutines.CancellationException
 import mihon.domain.migration.models.MigrationFlag
 import tachiyomi.domain.category.interactor.GetCategories

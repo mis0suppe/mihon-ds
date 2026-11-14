@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.source
 
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
@@ -22,3 +24,17 @@ fun Source.getNameForMangaInfo(): String {
 }
 
 fun Source.isLocalOrStub(): Boolean = isLocal() || this is StubSource
+
+/**
+ * Fetches only the manga details through the combined tachiyomix 1.6 API.
+ */
+suspend fun Source.getMangaDetails(manga: SManga): SManga {
+    return getMangaUpdate(manga, emptyList(), fetchDetails = true, fetchChapters = false).manga
+}
+
+/**
+ * Fetches only the chapter list through the combined tachiyomix 1.6 API.
+ */
+suspend fun Source.getChapterList(manga: SManga): List<SChapter> {
+    return getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true).chapters
+}

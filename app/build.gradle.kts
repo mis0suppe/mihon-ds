@@ -32,8 +32,8 @@ android {
     defaultConfig {
         applicationId = "app.mihon.ds"
 
-        versionCode = 20
-        versionName = "0.1.6"
+        versionCode = 21
+        versionName = "0.1.7"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
@@ -265,7 +265,6 @@ dependencies {
 
     // UI libraries
     implementation(libs.material)
-    implementation(libs.flexible.adapter.core)
     implementation(libs.photoview)
     implementation(libs.directionalviewpager) {
         exclude(group = "androidx.viewpager", module = "viewpager")

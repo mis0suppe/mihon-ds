@@ -1,13 +1,10 @@
 package eu.kanade.tachiyomi.ui.download
 
-import android.view.ContextThemeWrapper
-import android.view.LayoutInflater
-import eu.kanade.tachiyomi.R
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.filled.PlayArrow
@@ -26,7 +23,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,16 +30,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.ViewCompat
-import androidx.core.view.updatePadding
-import androidx.recyclerview.widget.LinearLayoutManager
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -51,17 +41,15 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.presentation.components.NestedMenuItem
+import eu.kanade.presentation.download.DownloadQueueList
 import eu.kanade.presentation.util.Screen
-import eu.kanade.tachiyomi.databinding.DownloadListBinding
 import kotlinx.collections.immutable.persistentListOf
 import mihon.core.dualscreen.DualScreenState
-import tachiyomi.core.common.util.lang.launchUI
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.Pill
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
-import kotlin.math.roundToInt
 
 object DownloadQueueScreen : Screen() {
 
@@ -73,11 +61,10 @@ object DownloadQueueScreen : Screen() {
                 navigator.pop()
             }
         }
-        val scope = rememberCoroutineScope()
         val screenModel = rememberScreenModel { DownloadQueueScreenModel() }
         val downloadList by screenModel.state.collectAsState()
         val downloadCount by remember {
-            derivedStateOf { downloadList.sumOf { it.subItems.size } }
+            derivedStateOf { downloadList.sumOf { it.downloads.size } }
         }
 
         val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -143,7 +130,7 @@ object DownloadQueueScreen : Screen() {
                                             text = { Text(text = stringResource(MR.strings.action_newest)) },
                                             onClick = {
                                                 screenModel.reorderQueue(
-                                                    { it.download.chapter.dateUpload },
+                                                    { it.chapter.dateUpload },
                                                     true,
                                                 )
                                                 closeMenu()
@@ -153,7 +140,7 @@ object DownloadQueueScreen : Screen() {
                                             text = { Text(text = stringResource(MR.strings.action_oldest)) },
                                             onClick = {
                                                 screenModel.reorderQueue(
-                                                    { it.download.chapter.dateUpload },
+                                                    { it.chapter.dateUpload },
                                                     false,
                                                 )
                                                 closeMenu()
@@ -168,7 +155,7 @@ object DownloadQueueScreen : Screen() {
                                             text = { Text(text = stringResource(MR.strings.action_asc)) },
                                             onClick = {
                                                 screenModel.reorderQueue(
-                                                    { it.download.chapter.chapterNumber },
+                                                    { it.chapter.chapterNumber },
                                                     false,
                                                 )
                                                 closeMenu()
@@ -178,7 +165,7 @@ object DownloadQueueScreen : Screen() {
                                             text = { Text(text = stringResource(MR.strings.action_desc)) },
                                             onClick = {
                                                 screenModel.reorderQueue(
-                                                    { it.download.chapter.chapterNumber },
+                                                    { it.chapter.chapterNumber },
                                                     true,
                                                 )
                                                 closeMenu()
@@ -248,52 +235,18 @@ object DownloadQueueScreen : Screen() {
                 return@Scaffold
             }
 
-            val density = LocalDensity.current
-            val layoutDirection = LocalLayoutDirection.current
-            val left = with(density) { contentPadding.calculateLeftPadding(layoutDirection).toPx().roundToInt() }
-            val top = with(density) { contentPadding.calculateTopPadding().toPx().roundToInt() }
-            val right = with(density) { contentPadding.calculateRightPadding(layoutDirection).toPx().roundToInt() }
-            val bottom = with(density) { contentPadding.calculateBottomPadding().toPx().roundToInt() }
+            val lazyListState = rememberLazyListState()
 
             Box(modifier = Modifier.nestedScroll(nestedScrollConnection)) {
-                AndroidView(
-                    modifier = Modifier.fillMaxWidth(),
-                    factory = { context ->
-                        // Use application context wrapped with proper theme for Presentation contexts
-                        val themedContext = ContextThemeWrapper(
-                            context.applicationContext,
-                            R.style.Theme_Tachiyomi,
-                        )
-                        screenModel.controllerBinding = DownloadListBinding.inflate(LayoutInflater.from(themedContext))
-                        screenModel.adapter = DownloadAdapter(screenModel.listener)
-                        screenModel.controllerBinding.root.adapter = screenModel.adapter
-                        screenModel.adapter?.isHandleDragEnabled = true
-                        screenModel.controllerBinding.root.layoutManager = LinearLayoutManager(context)
-
-                        ViewCompat.setNestedScrollingEnabled(screenModel.controllerBinding.root, true)
-
-                        scope.launchUI {
-                            screenModel.getDownloadStatusFlow()
-                                .collect(screenModel::onStatusChange)
-                        }
-                        scope.launchUI {
-                            screenModel.getDownloadProgressFlow()
-                                .collect(screenModel::onUpdateDownloadedPages)
-                        }
-
-                        screenModel.controllerBinding.root
-                    },
-                    update = {
-                        screenModel.controllerBinding.root
-                            .updatePadding(
-                                left = left,
-                                top = top,
-                                right = right,
-                                bottom = bottom,
-                            )
-
-                        screenModel.adapter?.updateDataSet(downloadList)
-                    },
+                DownloadQueueList(
+                    sections = downloadList,
+                    lazyListState = lazyListState,
+                    contentPadding = contentPadding,
+                    onReorder = screenModel::reorder,
+                    onMove = screenModel::move,
+                    onMoveSeries = screenModel::moveSeries,
+                    onCancel = { screenModel.cancel(listOf(it)) },
+                    onCancelSeries = screenModel::cancelSeries,
                 )
             }
         }
