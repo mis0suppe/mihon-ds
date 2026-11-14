@@ -24,6 +24,7 @@ A specialized fork of [Mihon](https://mihon.app) optimized for devices with seco
 *   **Tracker Progress Sync:** Optionally pulls tracker progress into local read status when refreshing entries or manually updating the library.
 *   **Customizable Setup:** New onboarding steps to select the target Display ID and rotation overrides.
 *   **Privacy Focused:** Telemetry and Crashlytics are disabled by default.
+*   **Extension Lib 1.6 Support:** Loads tachiyomix (lib 1.6) extensions and reads the new version 2 store index, so current Keiyoushi repositories work. Legacy 1.4 extensions and repositories keep working.
 
 *Plus all the standard features of Mihon:*
 *   Local reading of content.
