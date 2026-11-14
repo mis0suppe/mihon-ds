@@ -6,6 +6,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.getChapterList
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.online.ResolvableSource
 import eu.kanade.tachiyomi.source.online.UriType

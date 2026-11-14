@@ -8,6 +8,8 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.getChapterList
+import eu.kanade.tachiyomi.source.getMangaDetails
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf

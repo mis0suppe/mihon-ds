@@ -10,9 +10,11 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.supervisorScope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
 import logcat.LogPriority
@@ -138,8 +140,19 @@ actual class LocalSource(
         MangasPage(mangas, false)
     }
 
+    override suspend fun getMangaUpdate(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): SMangaUpdate = supervisorScope {
+        val asyncManga = if (fetchDetails) async { getMangaDetails(manga) } else null
+        val asyncChapters = if (fetchChapters) async { getChapterList(manga) } else null
+        SMangaUpdate(asyncManga?.await() ?: manga, asyncChapters?.await() ?: chapters)
+    }
+
     // Manga details related
-    override suspend fun getMangaDetails(manga: SManga): SManga = withIOContext {
+    private suspend fun getMangaDetails(manga: SManga): SManga = withIOContext {
         coverManager.find(manga.url)?.let {
             manga.thumbnail_url = it.uri.toString()
         }
@@ -255,7 +268,7 @@ actual class LocalSource(
     }
 
     // Chapters
-    override suspend fun getChapterList(manga: SManga): List<SChapter> = withIOContext {
+    private suspend fun getChapterList(manga: SManga): List<SChapter> = withIOContext {
         val chapters = fileSystem.getFilesInMangaDirectory(manga.url)
             // Only keep supported formats
             .filterNot { it.name.orEmpty().startsWith('.') }
